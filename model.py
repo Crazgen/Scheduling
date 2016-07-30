@@ -207,7 +207,7 @@ def solve_single_floor(data):
                                  1 + cons_relax[Clerk_e_l_s][(n, d)])
     # add object
     prob += obj
-    prob.solve(lp.PULP_CBC_CMD(msg=1, maxSeconds=1200))
+    prob.solve(lp.PULP_CBC_CMD(msg=1, maxSeconds=data['Time limit']))
     if lp.LpStatus[prob.status] != 'Infeasible':
         obj_res = lp.value(prob.objective)
         return obj_res, cons_relax, x_c, z_c, kesi_c, lp.LpStatus[prob.status]
@@ -218,6 +218,7 @@ def solve_single_floor(data):
 def test():
     data = dict()
     data['working hours'], data['working days'], data['clerks'] = 12, 31, 4
+    data['Time limit'] = 600
     clerks = range(1, 5)
     data[Clerk_m_s_h] = (True, False, 1, {'minimum hour': 6})
     data[Clerk_m_s] = (True, False, 1, None)
