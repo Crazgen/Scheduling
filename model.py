@@ -1,6 +1,7 @@
 # encoding=utf-8
 import pulp as lp
 import xlwt
+import os
 from datetime import datetime, timedelta, time
 Clerk_i_d = 'Clerks included'
 
@@ -212,7 +213,8 @@ def solve_single_floor(data):
                                  1 + cons_relax[Clerk_e_l_s][(n, d)])
     # add object
     prob += obj
-    prob.solve(lp.PULP_CBC_CMD(msg=1, maxSeconds=data['Time limit']))
+    # prob.solve(lp.PULP_CBC_CMD(msg=1, maxSeconds=data['Time limit']))
+    prob.solve(lp.COIN_CMD(msg=1, maxSeconds=data['Time limit'], path=os.getcwdu() + '\\cbc.exe'))
     print(lp.LpStatus[prob.status])
     if lp.LpStatus[prob.status] == 'Infeasible':
         return None, cons_relax, None, None, None, lp.LpStatus[prob.status]
@@ -225,6 +227,8 @@ def output_excel(filename, data, result):
     wb = xlwt.Workbook()
     analysis_s = wb.add_sheet(u'结果分析')
     analysis_s.write(0, 0, u'结果状态：')
+    off_st = xlwt.easyxf('pattern: pattern solid, pattern_fore_colour 73;' +
+                         ' borders: left THIN, right THIN, top THIN, bottom THIN')
     if result['status'] != 'Optimal':
         analysis_s.write(0, 1, u'未找到最优状态，可尝试增加求解时间得到更好的排班。')
     if not (result['x_c'] is None):
@@ -232,8 +236,6 @@ def output_excel(filename, data, result):
         schedule_s = wb.add_sheet(u'排班')
         on_st = xlwt.easyxf('pattern: pattern solid, pattern_fore_colour 17;' +
                             ' borders: left THIN, right THIN, top THIN, bottom THIN')
-        off_st = xlwt.easyxf('pattern: pattern solid, pattern_fore_colour 73;' +
-                             ' borders: left THIN, right THIN, top THIN, bottom THIN')
         date_st = xlwt.easyxf('borders: left THIN, right THIN, top THIN, bottom THIN;' +
                               ' align: wrap on, vert center, horiz center',
                               num_format_str=u'YYYY年M月D日 AAAA')
@@ -322,8 +324,27 @@ def output_excel(filename, data, result):
                 analysis_s.write(c_n_row, clerk_num_rc[1] + 3, clerk_num_at_shop[(d, h)], reg_st)
                 c_n_row += 1
     else:
-        analysis_s.write(1, 0, u'未找到可行规划，请尝试以下调整约束优先级')
-    wb.save(filename)
+        analysis_s.write(1, 0, u'未找到可行排班，请尝试调整以下某些约束的优先级：')
+        start_row = 2
+        temp_l = zip(CONSTRAINTS_NAME, CONSTRAINTS)
+        temp_l.reverse()
+        for cons_name, cons_str in temp_l:
+            if data[cons_str][0] and data[cons_str][1]:
+                analysis_s.write_merge(start_row, start_row, 0, 4, str(start_row-1) + '. ' + cons_name, off_st)
+                start_row += 1
+    try_str, try_num, ori_f_name = '', 0, filename
+    while try_num < 100000:
+        try:
+            wb.save(filename + '.xls')
+        except IOError, e:
+            try_num += 1
+            if e.errno == 13:
+                filename = ori_f_name + str(try_num)
+            else:
+                break
+        else:
+            os.startfile(filename + '.xls')
+            break
 
 
 def test(timelim):
@@ -361,8 +382,8 @@ def test(timelim):
                                                               2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 2, 2, 2, 2,
                                                               2, 2, 2, 2, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1,
                                                               1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1]})
-    data[Clerk_m_t] = (True, False, 1, {Clerk_i_d: clerks, 'minimum work time': 167})
-    data[Clerk_o_t] = (True, False, 0, {Clerk_i_d: clerks, 'maximum work time': 167+0})
+    data[Clerk_m_t] = (True, True, 1, {Clerk_i_d: clerks, 'minimum work time': 167})
+    data[Clerk_o_t] = (True, True, 0, {Clerk_i_d: clerks, 'maximum work time': 167+5})
     data[Clerk_c_o] = (True, False, 1, {Clerk_i_d: clerks, 'maximum off days': 3})
     data[Clerk_w_b] = (True, False, 1, {Clerk_i_d: clerks, 'Weekly work day differences': 1, 'Week start days': [1, 8,
                                                                                                                  15,
@@ -389,5 +410,5 @@ def test(timelim):
     result = dict()
     (result['objective'], result['relax'], result['x_c'],
      result['z_c'], result['kesi_c'], result['status']) = solve_single_floor(data)
-    output_excel('test_schedule.xls', data, result)
+    output_excel('test_schedule', data, result)
     return result
