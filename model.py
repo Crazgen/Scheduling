@@ -18,6 +18,9 @@ Clerk_w_b = 'Clerk weekly workday balance'
 Clerk_e_l_s = 'Clerk early late switch'
 CONSTRAINTS = [Clerk_m_s_h, Clerk_m_s, Clerk_w_t_b, Clerk_w_d_b, Clerk_m_o_d, Clerk_m_w_d, Clerk_m_r, Clerk_m_t,
                Clerk_o_t, Clerk_c_o, Clerk_w_b, Clerk_e_l_s]
+CONSTRAINTS_NAME = [u'每班次最少工时', u'无串班', u'员工间工时平衡', u'员工间工作天数平衡', u'排班周期最少休息天数',
+                    u'最多连续全班数', u'各时段最少员工数', u'排班周期内员工最少工时', u'排班周期内员工最多工时',
+                    u'最多连续休息天数', u'同一员工每周工作天数平衡', u'消除晚、早班连上']
 
 
 # constraints in data: data['constraint name'] = (is_involved, must_meet, priority, optional_data_dicts)
@@ -211,16 +214,19 @@ def solve_single_floor(data):
     prob += obj
     prob.solve(lp.PULP_CBC_CMD(msg=1, maxSeconds=data['Time limit']))
     print(lp.LpStatus[prob.status])
-    if 'Not Solved' != lp.LpStatus[prob.status] != 'Infeasible':
+    if lp.LpStatus[prob.status] == 'Infeasible':
+        return None, cons_relax, None, None, None, lp.LpStatus[prob.status]
+    else:
         obj_res = lp.value(prob.objective)
         return obj_res, cons_relax, x_c, z_c, kesi_c, lp.LpStatus[prob.status]
-    else:
-        return None, cons_relax, None, None, None, lp.LpStatus[prob.status]
 
 
 def output_excel(filename, data, result):
     wb = xlwt.Workbook()
     analysis_s = wb.add_sheet(u'结果分析')
+    analysis_s.write(0, 0, u'结果状态：')
+    if result['status'] != 'Optimal':
+        analysis_s.write(0, 1, u'未找到最优状态，可尝试增加求解时间得到更好的排班。')
     if not (result['x_c'] is None):
         # write the scheduling result
         schedule_s = wb.add_sheet(u'排班')
@@ -234,10 +240,13 @@ def output_excel(filename, data, result):
         hour_st = xlwt.easyxf('borders: left THIN, right THIN, top THIN, bottom THIN',
                               num_format_str='h:mm')
         reg_st = xlwt.easyxf('borders: left THIN, right THIN, top THIN, bottom THIN')
+        reg_m_st = xlwt.easyxf('borders: left THIN, right THIN, top THIN, bottom THIN;' +
+                               ' align: wrap on, vert center, horiz center')
         hour_num, day_num, clerk_num = data['working hours'], data['working days'], data['clerks']
         day_start_row, date_delta, hour_delta = 0, timedelta(days=1), timedelta(hours=1)
         start_day, start_hour = data['Start date'], data['Start hour']
         clerk_workdays, clerk_work_time = [0*n for n in range(clerk_num+1)], [0*n for n in range(clerk_num+1)]
+        clerk_num_at_shop = {(d, h): 0 for d in range(1, day_num+1) for h in range(1, hour_num+1)}
         for d in range(1, day_num+1):
             schedule_s.write_merge(day_start_row, day_start_row, 1, hour_num, start_day + timedelta(days=d-1), date_st)
             day_start_row += 1
@@ -254,14 +263,66 @@ def output_excel(filename, data, result):
                         schedule_s.write(day_start_row, h, 0, off_st)
                     else:
                         clerk_work_time[n] += 1
+                        clerk_num_at_shop[(d, h)] += 1
                         schedule_s.write(day_start_row, h, 1, on_st)
                 day_start_row += 1
             day_start_row += 1
-        # write the result analysis
-        print(clerk_workdays)
-        print(clerk_work_time)
+        # calculate the constraints
+        constraint_re_num = {con_str: [con_name, 0] for con_str, con_name in zip(CONSTRAINTS, CONSTRAINTS_NAME)}
+        for con_str in CONSTRAINTS:
+            cons_var = result['relax'][con_str]
+            if not (cons_var is None):
+                for the_cons in cons_var.values():
+                    constraint_re_num[con_str][1] += the_cons.varValue
+        unmet_cons = len(CONSTRAINTS) - [constraint_re_num[con_str][1] for con_str in CONSTRAINTS].count(0)
+        # write the header
+        analysis_s.write(1, 0, u'得到排班方案，违反约束类别数为' + str(unmet_cons))
+        work_time_rc, cons_rc, clerk_num_rc = (3, 0), (3, 5), (6 + clerk_num, 0)
+        analysis_s.write_merge(work_time_rc[0], work_time_rc[0], work_time_rc[1], work_time_rc[1] + 3, u'员工工时总结',
+                               reg_m_st)
+        analysis_s.write(work_time_rc[0] + 1, work_time_rc[1] + 1, u'总工时', reg_st)
+        analysis_s.write(work_time_rc[0] + 1, work_time_rc[1] + 2, u'工作天数', reg_st)
+        analysis_s.write(work_time_rc[0] + 1, work_time_rc[1] + 3, u'休息天数', reg_st)
+        analysis_s.write_merge(cons_rc[0], cons_rc[0], cons_rc[1], cons_rc[1] + 4, u'排班未满足约束', reg_m_st)
+        analysis_s.write_merge(cons_rc[0] + 1, cons_rc[0] + 1, cons_rc[1], cons_rc[1] + 2, u'未满足约束', reg_m_st)
+        analysis_s.write(cons_rc[0] + 1, cons_rc[1] + 3, u'优先级', reg_st)
+        analysis_s.write(cons_rc[0] + 1, cons_rc[1] + 4, u'违反量', reg_st)
+        analysis_s.write_merge(clerk_num_rc[0], clerk_num_rc[0], clerk_num_rc[1], clerk_num_rc[1] + 3,
+                               u'不同时段上班员工数', reg_m_st)
+        analysis_s.write(clerk_num_rc[0] + 1, clerk_num_rc[1] + 0, u'日期', reg_st)
+        analysis_s.write(clerk_num_rc[0] + 1, clerk_num_rc[1] + 1, u'星期', reg_st)
+        analysis_s.write(clerk_num_rc[0] + 1, clerk_num_rc[1] + 2, u'时间', reg_st)
+        analysis_s.write(clerk_num_rc[0] + 1, clerk_num_rc[1] + 3, u'员工数', reg_st)
+        # write work time summary
+        for n in range(1, clerk_num+1):
+            analysis_s.write(work_time_rc[0] + 1 + n, work_time_rc[1], data['Clerk names'][n], reg_st)
+            analysis_s.write(work_time_rc[0] + 1 + n, work_time_rc[1] + 1, clerk_work_time[n], reg_st)
+            analysis_s.write(work_time_rc[0] + 1 + n, work_time_rc[1] + 2, clerk_workdays[n], reg_st)
+            analysis_s.write(work_time_rc[0] + 1 + n, work_time_rc[1] + 3, day_num - clerk_workdays[n], reg_st)
+        # write the constraint summary
+        cons_row = cons_rc[0] + 2
+        for con_str in CONSTRAINTS:
+            if constraint_re_num[con_str][1] > 0:
+                analysis_s.write_merge(cons_row, cons_row, cons_rc[1], cons_rc[1] + 2, constraint_re_num[con_str][0],
+                                       reg_m_st)
+                analysis_s.write(cons_row, cons_rc[1] + 3, data[con_str][2], reg_st)
+                analysis_s.write(cons_row, cons_rc[1] + 4, constraint_re_num[con_str][1], reg_st)
+                cons_row += 1
+        # write clerk num summary
+        c_n_row = clerk_num_rc[0] + 2
+        date_st1 = xlwt.easyxf('borders: left THIN, right THIN, top THIN, bottom THIN;', num_format_str=u'M月D日')
+        week_st = xlwt.easyxf('borders: left THIN, right THIN, top THIN, bottom THIN;', num_format_str=u'AAAA')
+        for d in range(1, day_num+1):
+            for h in range(1, hour_num+1):
+                analysis_s.write(c_n_row, clerk_num_rc[1], start_day + timedelta(days=d-1), date_st1)
+                analysis_s.write(c_n_row, clerk_num_rc[1] + 1, start_day + timedelta(days=d - 1), week_st)
+                analysis_s.write(c_n_row, clerk_num_rc[1] + 2,
+                                 (datetime.combine(datetime.today(), start_hour) + timedelta(hours=h-1)).time(),
+                                 hour_st)
+                analysis_s.write(c_n_row, clerk_num_rc[1] + 3, clerk_num_at_shop[(d, h)], reg_st)
+                c_n_row += 1
     else:
-        pass
+        analysis_s.write(1, 0, u'未找到可行规划，请尝试以下调整约束优先级')
     wb.save(filename)
 
 
@@ -273,8 +334,8 @@ def test(timelim):
     data['Start hour'] = time(10)
     data['Clerk names'] = [None, u'工', u'了', u'要', u'在']
     clerks = range(1, 5)
-    data[Clerk_m_s_h] = (True, False, 1, {'minimum hour': 6})
-    data[Clerk_m_s] = (True, False, 1, None)
+    data[Clerk_m_s_h] = (True, True, 1, {'minimum hour': 6})
+    data[Clerk_m_s] = (True, True, 1, None)
     data[Clerk_w_t_b] = (True, False, 1, {Clerk_i_d: clerks, 'Difference bound': 3})
     data[Clerk_w_d_b] = (True, False, 1, {Clerk_i_d: clerks, 'Difference bound': 2})
     data[Clerk_m_o_d] = (True, False, 1, {Clerk_i_d: clerks, 'Min off day': 31*2.0/7})
@@ -301,7 +362,7 @@ def test(timelim):
                                                               2, 2, 2, 2, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1,
                                                               1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1]})
     data[Clerk_m_t] = (True, False, 1, {Clerk_i_d: clerks, 'minimum work time': 167})
-    data[Clerk_o_t] = (True, False, 0, {Clerk_i_d: clerks, 'maximum work time': 167+9})
+    data[Clerk_o_t] = (True, False, 0, {Clerk_i_d: clerks, 'maximum work time': 167+0})
     data[Clerk_c_o] = (True, False, 1, {Clerk_i_d: clerks, 'maximum off days': 3})
     data[Clerk_w_b] = (True, False, 1, {Clerk_i_d: clerks, 'Weekly work day differences': 1, 'Week start days': [1, 8,
                                                                                                                  15,
