@@ -1,5 +1,7 @@
 # encoding=utf-8
 import pulp as lp
+import xlwt
+from datetime import datetime, timedelta, time
 Clerk_i_d = 'Clerks included'
 
 Clerk_m_s_h = 'Clerk minimum shifting hour'
@@ -208,17 +210,68 @@ def solve_single_floor(data):
     # add object
     prob += obj
     prob.solve(lp.PULP_CBC_CMD(msg=1, maxSeconds=data['Time limit']))
-    if lp.LpStatus[prob.status] != 'Infeasible':
+    print(lp.LpStatus[prob.status])
+    if 'Not Solved' != lp.LpStatus[prob.status] != 'Infeasible':
         obj_res = lp.value(prob.objective)
         return obj_res, cons_relax, x_c, z_c, kesi_c, lp.LpStatus[prob.status]
     else:
         return None, cons_relax, None, None, None, lp.LpStatus[prob.status]
 
 
-def test():
+def output_excel(filename, data, result):
+    wb = xlwt.Workbook()
+    analysis_s = wb.add_sheet(u'结果分析')
+    if not (result['x_c'] is None):
+        # write the scheduling result
+        schedule_s = wb.add_sheet(u'排班')
+        on_st = xlwt.easyxf('pattern: pattern solid, pattern_fore_colour 17;' +
+                            ' borders: left THIN, right THIN, top THIN, bottom THIN')
+        off_st = xlwt.easyxf('pattern: pattern solid, pattern_fore_colour 73;' +
+                             ' borders: left THIN, right THIN, top THIN, bottom THIN')
+        date_st = xlwt.easyxf('borders: left THIN, right THIN, top THIN, bottom THIN;' +
+                              ' align: wrap on, vert center, horiz center',
+                              num_format_str=u'YYYY年M月D日 AAAA')
+        hour_st = xlwt.easyxf('borders: left THIN, right THIN, top THIN, bottom THIN',
+                              num_format_str='h:mm')
+        reg_st = xlwt.easyxf('borders: left THIN, right THIN, top THIN, bottom THIN')
+        hour_num, day_num, clerk_num = data['working hours'], data['working days'], data['clerks']
+        day_start_row, date_delta, hour_delta = 0, timedelta(days=1), timedelta(hours=1)
+        start_day, start_hour = data['Start date'], data['Start hour']
+        clerk_workdays, clerk_work_time = [0*n for n in range(clerk_num+1)], [0*n for n in range(clerk_num+1)]
+        for d in range(1, day_num+1):
+            schedule_s.write_merge(day_start_row, day_start_row, 1, hour_num, start_day + timedelta(days=d-1), date_st)
+            day_start_row += 1
+            for h in range(1, hour_num+1):
+                schedule_s.write(day_start_row, h,
+                                 (datetime.combine(datetime.today(), start_hour) + timedelta(hours=h-1)).time(),
+                                 hour_st)
+            day_start_row += 1
+            for n in range(1, clerk_num+1):
+                clerk_workdays[n] += result['z_c'][(n, d)].varValue
+                schedule_s.write(day_start_row, 0, data['Clerk names'][n], reg_st)
+                for h in range(1, hour_num+1):
+                    if result['x_c'][(n, hour_num*(d-1)+h)].varValue == 0:
+                        schedule_s.write(day_start_row, h, 0, off_st)
+                    else:
+                        clerk_work_time[n] += 1
+                        schedule_s.write(day_start_row, h, 1, on_st)
+                day_start_row += 1
+            day_start_row += 1
+        # write the result analysis
+        print(clerk_workdays)
+        print(clerk_work_time)
+    else:
+        pass
+    wb.save(filename)
+
+
+def test(timelim):
     data = dict()
     data['working hours'], data['working days'], data['clerks'] = 12, 31, 4
-    data['Time limit'] = 600
+    data['Time limit'] = timelim
+    data['Start date'] = datetime(2016, 3, 14)
+    data['Start hour'] = time(10)
+    data['Clerk names'] = [None, u'工', u'了', u'要', u'在']
     clerks = range(1, 5)
     data[Clerk_m_s_h] = (True, False, 1, {'minimum hour': 6})
     data[Clerk_m_s] = (True, False, 1, None)
@@ -248,7 +301,7 @@ def test():
                                                               2, 2, 2, 2, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1,
                                                               1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1]})
     data[Clerk_m_t] = (True, False, 1, {Clerk_i_d: clerks, 'minimum work time': 167})
-    data[Clerk_o_t] = (True, False, 0, {Clerk_i_d: clerks, 'maximum work time': 167+0})
+    data[Clerk_o_t] = (True, False, 0, {Clerk_i_d: clerks, 'maximum work time': 167+9})
     data[Clerk_c_o] = (True, False, 1, {Clerk_i_d: clerks, 'maximum off days': 3})
     data[Clerk_w_b] = (True, False, 1, {Clerk_i_d: clerks, 'Weekly work day differences': 1, 'Week start days': [1, 8,
                                                                                                                  15,
@@ -272,4 +325,8 @@ def test():
             if tttjust[t] > 0:
                 p_days.add(d)
     data[Clerk_e_l_s] = (True, False, 0, {Clerk_i_d: clerks, 'Switch permission': p_days})
-    return solve_single_floor(data)
+    result = dict()
+    (result['objective'], result['relax'], result['x_c'],
+     result['z_c'], result['kesi_c'], result['status']) = solve_single_floor(data)
+    output_excel('test_schedule.xls', data, result)
+    return result
