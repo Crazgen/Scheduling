@@ -1,6 +1,7 @@
 # encoding=utf-8
 import pulp as lp
 import xlwt
+import xlrd
 import os
 from datetime import datetime, timedelta, time
 Clerk_i_d = 'Clerks included'
@@ -343,8 +344,24 @@ def output_excel(filename, data, result):
             else:
                 break
         else:
-            os.startfile(filename + '.xls')
+            os.startfile(os.path.abspath(filename + '.xls'))
             break
+
+
+def input_excel(filename):
+    filename = os.path.abspath(filename)
+    try:
+        w_f = xlrd.open_workbook(filename)
+    except IOError:
+        print(u'无法找到参数文件。请确认文件在正确位置。')
+        os.system('pause')
+    else:
+        basic = w_f.sheet_by_name(u'基本信息')
+        data = dict()
+        data['working days'], data['clerks'] = int(basic.cell_value(2, 1)), int(basic.cell_value(1, 1))
+        data['working hours'], data['Time limit'] = int(basic.cell_value(5, 1)), int(basic.cell_value(6, 1))
+        data['Start date'] = datetime(*xlrd.xldate_as_tuple(basic.cell_value(3,1), w_f.datemode)[:])
+        data['Start hour'] = time(*xlrd.xldate_as_tuple(basic.cell_value(4,1), w_f.datemode)[3:])
 
 
 def test(timelim):
@@ -410,5 +427,5 @@ def test(timelim):
     result = dict()
     (result['objective'], result['relax'], result['x_c'],
      result['z_c'], result['kesi_c'], result['status']) = solve_single_floor(data)
-    output_excel('test_schedule', data, result)
+    output_excel('../Schedule result/test_schedule', data, result)
     return result

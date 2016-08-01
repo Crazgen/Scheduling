@@ -1,1 +1,9 @@
 01.Shell ThisWorkbook.Path & "\RC4.exe """ & ThisWorkbook.Path & "\1.dat"""
+
+Another absolute path: if exe is not right:
+ABSPATH=None
+if __name__ == '__main__':
+         ABSPATH=os.path.abspath(sys.argv[0])
+         ABSPATH=os.path.dirname(ABSPATH)+"/"
+
+         print ABSPATH
