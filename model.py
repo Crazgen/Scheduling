@@ -198,18 +198,14 @@ def solve_single_floor(data):
         if data[Clerk_e_l_s][1]:
             for n in clerk_els:
                 for d in range(1, day_num):
-                    if d in els_exception:
-                        prob += x_c[(n, hour_num * d)] + x_c[(n, hour_num * d + 1)] <= 2
-                    else:
+                    if d not in els_exception:
                         prob += x_c[(n, hour_num * d)] + x_c[(n, hour_num * d + 1)] <= 1
         else:
             cons_relax[Clerk_e_l_s] = lp.LpVariable.dicts('Number of unfavorable switch', els_clerk_day, 0)
             obj += lp.lpSum(cons_relax[Clerk_e_l_s][n_d] for n_d in els_clerk_day) * (10 ** data[Clerk_e_l_s][2])
             for n in clerk_els:
                 for d in range(1, day_num):
-                    if d in els_exception:
-                        prob += x_c[(n, hour_num * d)] + x_c[(n, hour_num * d + 1)] <= 2
-                    else:
+                    if d not in els_exception:
                         prob += (x_c[(n, hour_num * d)] + x_c[(n, hour_num * d + 1)] <=
                                  1 + cons_relax[Clerk_e_l_s][(n, d)])
     # add object
@@ -355,13 +351,86 @@ def input_excel(filename):
     except IOError:
         print(u'无法找到参数文件。请确认文件在正确位置。')
         os.system('pause')
+        return None
     else:
         basic = w_f.sheet_by_name(u'基本信息')
         data = dict()
         data['working days'], data['clerks'] = int(basic.cell_value(2, 1)), int(basic.cell_value(1, 1))
         data['working hours'], data['Time limit'] = int(basic.cell_value(5, 1)), int(basic.cell_value(6, 1))
-        data['Start date'] = datetime(*xlrd.xldate_as_tuple(basic.cell_value(3,1), w_f.datemode)[:])
-        data['Start hour'] = time(*xlrd.xldate_as_tuple(basic.cell_value(4,1), w_f.datemode)[3:])
+        data['Start date'] = datetime(*xlrd.xldate_as_tuple(basic.cell_value(3, 1), w_f.datemode)[:])
+        data['Start hour'] = time(*xlrd.xldate_as_tuple(basic.cell_value(4, 1), w_f.datemode)[3:])
+        flags = w_f.sheet_by_name('FLAGS')
+        flag_dict = {str(f_str): fl == 1 for f_str, fl in zip(flags.col_values(0), flags.col_values(1))}
+        if flag_dict['Clerk names']:
+            c_list_sheet = w_f.sheet_by_name(u'员工列表')
+            data['Clerk names'] = [None]
+            for n in range(1, data['clerks']+1):
+                try:
+                    data['Clerk names'].append(c_list_sheet.cell_value(n, 0))
+                except IndexError:
+                    data['Clerk names'].append(u'员工' + str(n))
+        else:
+            data['Clerk names'] = [None]
+            for n in range(1, data['clerks'] + 1):
+                data['Clerk names'].append(u'员工' + str(n))
+        clerks = range(1, data['clerks'] + 1)
+        cons_sheet = w_f.sheet_by_name(u'约束管理')
+        priority_dict = {str(f_str): pri for f_str, pri in zip(flags.col_values(0)[1:13],
+                                                               cons_sheet.col_values(1)[1:13])}
+        tight_dict = dict()
+        for con_str in CONSTRAINTS:
+            if priority_dict[con_str] == u'必须满足':
+                tight_dict[con_str] = True
+            else:
+                tight_dict[con_str] = False
+        cons_option_dict = dict()
+        cons_option_dict[Clerk_m_s_h] = {'minimum hour': cons_sheet.cell_value(1, 4)}
+        cons_option_dict[Clerk_m_s] = None
+        cons_option_dict[Clerk_w_t_b] = {Clerk_i_d: clerks, 'Difference bound': cons_sheet.cell_value(3, 4)}
+        cons_option_dict[Clerk_w_d_b] = {Clerk_i_d: clerks, 'Difference bound': cons_sheet.cell_value(4, 4)}
+        cons_option_dict[Clerk_m_o_d] = {Clerk_i_d: clerks, 'Min off day': cons_sheet.cell_value(5, 4)}
+        cons_option_dict[Clerk_m_w_d] = {Clerk_i_d: clerks, 'Most whole day': int(cons_sheet.cell_value(6, 4)) + 1}
+        cons_option_dict[Clerk_m_t] = {Clerk_i_d: clerks, 'minimum work time': cons_sheet.cell_value(8, 4)}
+        cons_option_dict[Clerk_o_t] = {Clerk_i_d: clerks, 'maximum work time': cons_sheet.cell_value(9, 4)}
+        cons_option_dict[Clerk_c_o] = {Clerk_i_d: clerks, 'maximum off days': int(cons_sheet.cell_value(10, 4))}
+        week_s_d, try_sd = [], 1
+        while try_sd + 6 <= data['working days']:
+            week_s_d.append(try_sd)
+            try_sd += 7
+        cons_option_dict[Clerk_w_b] = {Clerk_i_d: clerks, 'Weekly work day differences': cons_sheet.cell_value(11, 4),
+                                       'Week start days': week_s_d}
+        els_sheet = w_f.sheet_by_name('els')
+        p_days, d_st = set(), 1
+        for exc_str in els_sheet.col_values(1)[2:]:
+            if d_st > data['working days']:
+                break
+            if exc_str == u'是':
+                p_days.add(d_st)
+            d_st += 1
+        cons_option_dict[Clerk_e_l_s] = {Clerk_i_d: clerks, 'Switch permission': p_days}
+        minic_sheet = w_f.sheet_by_name('minic')
+        mini_c_num = list()
+        mini_c_num.append(None)
+        for d in range(1, data['working days'] + 1):
+            for h in range(1, data['working hours'] + 1):
+                if minic_sheet.cell_type(d + 1, h) != 2:
+                    mini_c_num.append(0)
+                else:
+                    mini_c_num.append(minic_sheet.cell_value(d + 1, h))
+        if flag_dict['Consider traffic']:
+            service_level = cons_sheet.cell_value(13, 4)
+            traff_sheet = w_f.sheet_by_name('traffic')
+            for d in range(1, data['working days'] + 1):
+                for h in range(1, data['working hours'] + 1):
+                    if traff_sheet.cell_type(d + 1, h) == 2:
+                        t = (d-1)*data['working hours'] + h
+                        trf = traff_sheet.cell_value(d + 1, h)*1.0/service_level
+                        if mini_c_num[t] < trf:
+                            mini_c_num[t] = trf
+        cons_option_dict[Clerk_m_r] = {'minimum clerk num': mini_c_num}
+        for con_str in CONSTRAINTS:
+            data[con_str] = (flag_dict[con_str], tight_dict[con_str], priority_dict[con_str], cons_option_dict[con_str])
+        return data
 
 
 def test(timelim):
@@ -429,3 +498,11 @@ def test(timelim):
      result['z_c'], result['kesi_c'], result['status']) = solve_single_floor(data)
     output_excel('../Schedule result/test_schedule', data, result)
     return result
+
+
+if __name__ == '__main__':
+    data = input_excel(u'../排班工具.xlsm')
+    result = dict()
+    (result['objective'], result['relax'], result['x_c'],
+     result['z_c'], result['kesi_c'], result['status']) = solve_single_floor(data)
+    output_excel('../Schedule result/test_schedule', data, result)
