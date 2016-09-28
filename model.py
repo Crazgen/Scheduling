@@ -214,13 +214,14 @@ def solve_single_floor(data):
     prob.solve(lp.COIN_CMD(msg=1, maxSeconds=data['Time limit'], path=os.getcwdu() + '\\cbc.exe'))
     print(lp.LpStatus[prob.status])
     if lp.LpStatus[prob.status] == 'Infeasible':
-        return None, cons_relax, None, None, None, lp.LpStatus[prob.status]
+        return None, cons_relax, None, None, None, lp.LpStatus[prob.status], prob.constraints
     else:
         obj_res = lp.value(prob.objective)
-        return obj_res, cons_relax, x_c, z_c, kesi_c, lp.LpStatus[prob.status]
+        return obj_res, cons_relax, x_c, z_c, kesi_c, lp.LpStatus[prob.status], prob.constraints
 
 
 def output_excel(filename, data, result):
+    is_feasible = check_feasible(result)
     wb = xlwt.Workbook()
     analysis_s = wb.add_sheet(u'结果分析')
     analysis_s.write(0, 0, u'结果状态：')
@@ -228,7 +229,7 @@ def output_excel(filename, data, result):
                          ' borders: left THIN, right THIN, top THIN, bottom THIN')
     if result['status'] != 'Optimal':
         analysis_s.write(0, 1, u'未找到最优状态，可尝试增加求解时间得到更好的排班。')
-    if not (result['x_c'] is None):
+    if (not (result['x_c'] is None)) and is_feasible:
         # write the scheduling result
         schedule_s = wb.add_sheet(u'排班')
         on_st = xlwt.easyxf('pattern: pattern solid, pattern_fore_colour 17;' +
@@ -320,7 +321,7 @@ def output_excel(filename, data, result):
                                  hour_st)
                 analysis_s.write(c_n_row, clerk_num_rc[1] + 3, clerk_num_at_shop[(d, h)], reg_st)
                 c_n_row += 1
-    else:
+    elif is_feasible:
         analysis_s.write(1, 0, u'未找到可行排班，请尝试调整以下某些约束的优先级：')
         start_row = 2
         temp_l = zip(CONSTRAINTS_NAME, CONSTRAINTS)
@@ -329,6 +330,8 @@ def output_excel(filename, data, result):
             if data[cons_str][0] and data[cons_str][1]:
                 analysis_s.write_merge(start_row, start_row, 0, 4, str(start_row-1) + '. ' + cons_name, off_st)
                 start_row += 1
+    else:
+        analysis_s.write(1, 0, u'未找到可行排班，请增加求解时间。')
     try_str, try_num, ori_f_name = '', 0, filename
     while try_num < 100000:
         try:
@@ -433,6 +436,25 @@ def input_excel(filename):
         return data
 
 
+def check_feasible(result, eps=0.01):
+    for c in result['constraints'].values():
+        if not c.valid(eps):
+            return False
+    for x in result['x_c'].values():
+        xv = x.varValue
+        if abs(xv) > eps < abs(xv-1.0):
+            return False
+    for x in result['z_c'].values():
+        xv = x.varValue
+        if abs(xv) > eps < abs(xv - 1.0):
+            return False
+    for x in result['kesi_c'].values():
+        xv = x.varValue
+        if abs(xv) > eps < abs(xv - 1.0):
+            return False
+    return True
+
+
 def test(timelim):
     data = dict()
     data['working hours'], data['working days'], data['clerks'] = 12, 31, 4
@@ -504,5 +526,5 @@ if __name__ == '__main__':
     data = input_excel(u'../排班工具.xlsm')
     result = dict()
     (result['objective'], result['relax'], result['x_c'],
-     result['z_c'], result['kesi_c'], result['status']) = solve_single_floor(data)
+     result['z_c'], result['kesi_c'], result['status'], result['constraints']) = solve_single_floor(data)
     output_excel('../Schedule result/test_schedule', data, result)

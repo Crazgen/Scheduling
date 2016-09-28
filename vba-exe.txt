@@ -1,6 +1,8 @@
 01.Shell ThisWorkbook.Path & "\RC4.exe """ & ThisWorkbook.Path & "\1.dat"""
 
-Another absolute path: if exe is not right:
+pyinstaller -F .py
+
+Another absolute path: if exe is not right: (this will work right even if the outer path is wrong)
 ABSPATH=None
 if __name__ == '__main__':
          ABSPATH=os.path.abspath(sys.argv[0])
