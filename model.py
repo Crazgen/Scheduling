@@ -23,6 +23,7 @@ CONSTRAINTS = [Clerk_m_s_h, Clerk_m_s, Clerk_w_t_b, Clerk_w_d_b, Clerk_m_o_d, Cl
 CONSTRAINTS_NAME = [u'每班次最少工时', u'无串班', u'员工间工时平衡', u'员工间工作天数平衡', u'排班周期最少休息天数',
                     u'最多连续全班数', u'各时段最少员工数', u'排班周期内员工最少工时', u'排班周期内员工最多工时',
                     u'最多连续休息天数', u'同一员工每周工作天数平衡', u'消除晚、早班连上']
+CONSTRAINTS_IND = {cons_sss: '' for cons_sss in CONSTRAINTS}
 
 
 # constraints in data: data['constraint name'] = (is_involved, must_meet, priority, optional_data_dicts)
@@ -56,6 +57,7 @@ def solve_single_floor(data):
                          lp.lpSum(x_c[(n, hour_num*(d-1)+h)] for h in hours))
         else:
             cons_relax[Clerk_m_s_h] = lp.LpVariable.dicts('Number of exceeding hours', clerk_day, 0)
+            CONSTRAINTS_IND[Clerk_m_s_h] = u'(员工, 天数): '
             obj += lp.lpSum(cons_relax[Clerk_m_s_h][n_d] for n_d in clerk_day) * (10 ** data[Clerk_m_s_h][2])
             for n, d in clerk_day:
                 prob += (data[Clerk_m_s_h][3]['minimum hour'] * z_c[(n, d)] <=
@@ -67,6 +69,7 @@ def solve_single_floor(data):
                 prob += lp.lpSum(kesi_c[(n, hour_num*(d-1)+h)] for h in hours) <= 1
         else:
             cons_relax[Clerk_m_s] = lp.LpVariable.dicts('Number of cross shifting', clerk_day, 0)
+            CONSTRAINTS_IND[Clerk_m_s] = u'(员工, 天数): '
             obj += lp.lpSum(cons_relax[Clerk_m_s][n_d] for n_d in clerk_day) * (10 ** data[Clerk_m_s][2])
             for n, d in clerk_day:
                 prob += (lp.lpSum(kesi_c[(n, hour_num * (d - 1) + h)] for h in hours) <=
@@ -81,6 +84,7 @@ def solve_single_floor(data):
                 prob += lp.lpSum(x_c[(i, t)] for t in time_slots) - lp.lpSum(x_c[(j, t)] for t in time_slots) <= dif_wtb
         else:
             cons_relax[Clerk_w_t_b] = lp.LpVariable.dicts('Number of exceeding work hours', clerk_inter_wtb, 0)
+            CONSTRAINTS_IND[Clerk_w_t_b] = u'(员工, 员工): '
             obj += lp.lpSum(cons_relax[Clerk_w_t_b][i_j] for i_j in clerk_inter_wtb) * (10 ** data[Clerk_w_t_b][2])
             for i, j in clerk_inter_wtb:
                 prob += (lp.lpSum(x_c[(i, t)] for t in time_slots) - lp.lpSum(x_c[(j, t)] for t in time_slots) <=
@@ -95,6 +99,7 @@ def solve_single_floor(data):
                 prob += lp.lpSum(z_c[(i, d)] for d in days) - lp.lpSum(z_c[(j, d)] for d in days) <= dif_wdb
         else:
             cons_relax[Clerk_w_d_b] = lp.LpVariable.dicts('Number of exceeding work days', clerk_inter_wdb, 0)
+            CONSTRAINTS_IND[Clerk_w_d_b] = u'(员工, 员工): '
             obj += lp.lpSum(cons_relax[Clerk_w_d_b][i_j] for i_j in clerk_inter_wdb) * (10 ** data[Clerk_w_d_b][2])
             for i, j in clerk_inter_wdb:
                 prob += (lp.lpSum(z_c[(i, d)] for d in days) - lp.lpSum(z_c[(j, d)] for d in days) <=
@@ -108,6 +113,7 @@ def solve_single_floor(data):
                 prob += lp.lpSum(z_c[(n, d)] for d in days) <= day_num - mod
         else:
             cons_relax[Clerk_m_o_d] = lp.LpVariable.dicts('Number of exceeding days', clerk_mod, 0)
+            CONSTRAINTS_IND[Clerk_m_o_d] = u'员工: '
             obj += lp.lpSum(cons_relax[Clerk_m_o_d][n] for n in clerk_mod) * (10 ** data[Clerk_m_o_d][2])
             for n in clerk_mod:
                 prob += lp.lpSum(z_c[(n, d)] for d in days) <= day_num - mod + cons_relax[Clerk_m_o_d][n]
@@ -122,6 +128,7 @@ def solve_single_floor(data):
                 prob += lp.lpSum(x_c[(n, t + k - 1)] for k in range(1, mwd+1)) <= mwd - 1
         else:
             cons_relax[Clerk_m_w_d] = lp.LpVariable.dicts('Number of exceeding whole days', clerk_time_mwd, 0)
+            CONSTRAINTS_IND[Clerk_m_w_d] = u'(员工, 时间): '
             obj += lp.lpSum(cons_relax[Clerk_m_w_d][n_t] for n_t in clerk_time_mwd) * (10 ** data[Clerk_m_w_d][2])
             for n, t in clerk_time_mwd:
                 prob += (lp.lpSum(x_c[(n, t + k - 1)] for k in range(1, mwd + 1)) <=
@@ -134,6 +141,7 @@ def solve_single_floor(data):
                 prob += lp.lpSum(x_c[(n, t)] for n in clerks) >= mini_clerks[t]
         else:
             cons_relax[Clerk_m_r] = lp.LpVariable.dicts('Number of short of clerks', time_slots, 0)
+            CONSTRAINTS_IND[Clerk_m_r] = u'时间: '
             obj += lp.lpSum(cons_relax[Clerk_m_r][t] for t in time_slots) * (10 ** data[Clerk_m_r][2])
             for t in time_slots:
                 prob += lp.lpSum(x_c[(n, t)] for n in clerks) + cons_relax[Clerk_m_r][t] >= mini_clerks[t]
@@ -146,6 +154,7 @@ def solve_single_floor(data):
                 prob += lp.lpSum(x_c[(n, t)] for t in time_slots) >= mt
         else:
             cons_relax[Clerk_m_t] = lp.LpVariable.dicts('Number of less time', clerks_mt, 0)
+            CONSTRAINTS_IND[Clerk_m_t] = u'员工: '
             obj += lp.lpSum(cons_relax[Clerk_m_t][n] for n in clerks_mt) * (10 ** data[Clerk_m_t][2])
             for n in clerks_mt:
                 prob += lp.lpSum(x_c[(n, t)] for t in time_slots) + cons_relax[Clerk_m_t][n] >= mt
@@ -157,6 +166,7 @@ def solve_single_floor(data):
                 prob += lp.lpSum(x_c[(n, t)] for t in time_slots) <= ot
         else:
             cons_relax[Clerk_o_t] = lp.LpVariable.dicts('Number of overtime', clerk_ot, 0)
+            CONSTRAINTS_IND[Clerk_o_t] = u'员工: '
             obj += lp.lpSum(cons_relax[Clerk_o_t][n] for n in clerk_ot) * (10 ** data[Clerk_o_t][2])
             for n in clerk_ot:
                 prob += lp.lpSum(x_c[(n, t)] for t in time_slots) <= ot + cons_relax[Clerk_o_t][n]
@@ -171,6 +181,7 @@ def solve_single_floor(data):
                 prob += lp.lpSum(z_c[(n, d+i-1)] for i in range(1, cod+2)) >= 1
         else:
             cons_relax[Clerk_c_o] = lp.LpVariable.dicts('Number of cod', cod_clerk_days, 0)
+            CONSTRAINTS_IND[Clerk_c_o] = u'(员工, 天数): '
             obj += lp.lpSum(cons_relax[Clerk_c_o][n_d] for n_d in cod_clerk_days) * (10 ** data[Clerk_c_o][2])
             for n, d in cod_clerk_days:
                 prob += lp.lpSum(z_c[(n, d + i - 1)] for i in range(1, cod + 2)) + cons_relax[Clerk_c_o][(n, d)] >= 1
@@ -186,6 +197,7 @@ def solve_single_floor(data):
                          lp.lpSum(z_c[(n, d2+i)] for i in range(7)) <= wb_dif_b)
         else:
             cons_relax[Clerk_w_b] = lp.LpVariable.dicts('Number of work day balance', wb_clerk_d, 0)
+            CONSTRAINTS_IND[Clerk_w_b] = u'(员工, 天数, 天数): '
             obj += lp.lpSum(cons_relax[Clerk_w_b][ndd] for ndd in wb_clerk_d) * (10 ** data[Clerk_w_b][2])
             for n, d1, d2 in wb_clerk_d:
                 prob += (lp.lpSum(z_c[(n, d1 + i)] for i in range(7)) -
@@ -202,6 +214,7 @@ def solve_single_floor(data):
                         prob += x_c[(n, hour_num * d)] + x_c[(n, hour_num * d + 1)] <= 1
         else:
             cons_relax[Clerk_e_l_s] = lp.LpVariable.dicts('Number of unfavorable switch', els_clerk_day, 0)
+            CONSTRAINTS_IND[Clerk_e_l_s] = u'(员工, 天数): '
             obj += lp.lpSum(cons_relax[Clerk_e_l_s][n_d] for n_d in els_clerk_day) * (10 ** data[Clerk_e_l_s][2])
             for n in clerk_els:
                 for d in range(1, day_num):
@@ -212,6 +225,7 @@ def solve_single_floor(data):
     prob += obj
     # prob.solve(lp.PULP_CBC_CMD(msg=1, maxSeconds=data['Time limit']))
     prob.solve(lp.COIN_CMD(msg=1, maxSeconds=data['Time limit'], path=os.getcwdu() + '\\cbc.exe'))
+    lp.CPLEX_CMD(msg=1, maxSeconds=data['Time limit'], path=os.getcwdu() + '\\cbc.exe')
     print(lp.LpStatus[prob.status])
     if lp.LpStatus[prob.status] == 'Infeasible':
         return None, cons_relax, None, None, None, lp.LpStatus[prob.status], prob.constraints
@@ -268,12 +282,16 @@ def output_excel(filename, data, result):
                 day_start_row += 1
             day_start_row += 1
         # calculate the constraints
-        constraint_re_num = {con_str: [con_name, 0] for con_str, con_name in zip(CONSTRAINTS, CONSTRAINTS_NAME)}
+        constraint_re_num = {con_str: [con_name, 0, CONSTRAINTS_IND[con_str]] for con_str, con_name
+                             in zip(CONSTRAINTS, CONSTRAINTS_NAME)}
         for con_str in CONSTRAINTS:
             cons_var = result['relax'][con_str]
             if not (cons_var is None):
-                for the_cons in cons_var.values():
-                    constraint_re_num[con_str][1] += the_cons.varValue
+                for the_cons_k in cons_var.keys():
+                    the_cons = cons_var[the_cons_k].varValue
+                    if abs(the_cons) > 0.01:
+                        constraint_re_num[con_str][2] += str(the_cons_k) + ', '
+                    constraint_re_num[con_str][1] += the_cons
         unmet_cons = len(CONSTRAINTS) - [constraint_re_num[con_str][1] for con_str in CONSTRAINTS].count(0)
         # write the header
         analysis_s.write(1, 0, u'得到排班方案，违反约束类别数为' + str(unmet_cons))
@@ -283,10 +301,11 @@ def output_excel(filename, data, result):
         analysis_s.write(work_time_rc[0] + 1, work_time_rc[1] + 1, u'总工时', reg_st)
         analysis_s.write(work_time_rc[0] + 1, work_time_rc[1] + 2, u'工作天数', reg_st)
         analysis_s.write(work_time_rc[0] + 1, work_time_rc[1] + 3, u'休息天数', reg_st)
-        analysis_s.write_merge(cons_rc[0], cons_rc[0], cons_rc[1], cons_rc[1] + 4, u'排班未满足约束', reg_m_st)
+        analysis_s.write_merge(cons_rc[0], cons_rc[0], cons_rc[1], cons_rc[1] + 5, u'排班未满足约束', reg_m_st)
         analysis_s.write_merge(cons_rc[0] + 1, cons_rc[0] + 1, cons_rc[1], cons_rc[1] + 2, u'未满足约束', reg_m_st)
         analysis_s.write(cons_rc[0] + 1, cons_rc[1] + 3, u'优先级', reg_st)
         analysis_s.write(cons_rc[0] + 1, cons_rc[1] + 4, u'违反量', reg_st)
+        analysis_s.write(cons_rc[0] + 1, cons_rc[1] + 5, u'详情', reg_st)
         analysis_s.write_merge(clerk_num_rc[0], clerk_num_rc[0], clerk_num_rc[1], clerk_num_rc[1] + 3,
                                u'不同时段上班员工数', reg_m_st)
         analysis_s.write(clerk_num_rc[0] + 1, clerk_num_rc[1] + 0, u'日期', reg_st)
@@ -307,6 +326,7 @@ def output_excel(filename, data, result):
                                        reg_m_st)
                 analysis_s.write(cons_row, cons_rc[1] + 3, data[con_str][2], reg_st)
                 analysis_s.write(cons_row, cons_rc[1] + 4, constraint_re_num[con_str][1], reg_st)
+                analysis_s.write(cons_row, cons_rc[1] + 5, constraint_re_num[con_str][2], reg_st)
                 cons_row += 1
         # write clerk num summary
         c_n_row = clerk_num_rc[0] + 2
