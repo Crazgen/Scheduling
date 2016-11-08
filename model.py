@@ -18,11 +18,12 @@ Clerk_o_t = 'Clerk most over time'
 Clerk_c_o = 'Clerk continuous off days'
 Clerk_w_b = 'Clerk weekly workday balance'
 Clerk_e_l_s = 'Clerk early late switch'
+Clerk_ma_o_d = 'Clerk maximum off day'
 CONSTRAINTS = [Clerk_m_s_h, Clerk_m_s, Clerk_w_t_b, Clerk_w_d_b, Clerk_m_o_d, Clerk_m_w_d, Clerk_m_r, Clerk_m_t,
-               Clerk_o_t, Clerk_c_o, Clerk_w_b, Clerk_e_l_s]
+               Clerk_o_t, Clerk_c_o, Clerk_w_b, Clerk_e_l_s, Clerk_ma_o_d]
 CONSTRAINTS_NAME = [u'每班次最少工时', u'无串班', u'员工间工时平衡', u'员工间工作天数平衡', u'排班周期最少休息天数',
                     u'最多连续全班数', u'各时段最少员工数', u'排班周期内员工最少工时', u'排班周期内员工最多工时',
-                    u'最多连续休息天数', u'同一员工每周工作天数平衡', u'消除晚、早班连上']
+                    u'最多连续休息天数', u'同一员工每周工作天数平衡', u'消除晚、早班连上', u'最多休息天数']
 CONSTRAINTS_IND = {cons_sss: '' for cons_sss in CONSTRAINTS}
 
 
@@ -398,8 +399,8 @@ def input_excel(filename):
                 data['Clerk names'].append(u'员工' + str(n))
         clerks = range(1, data['clerks'] + 1)
         cons_sheet = w_f.sheet_by_name(u'约束管理')
-        priority_dict = {str(f_str): pri for f_str, pri in zip(flags.col_values(0)[1:13],
-                                                               cons_sheet.col_values(1)[1:13])}
+        priority_dict = {str(f_str): pri for f_str, pri in zip(flags.col_values(0)[1:14],
+                                                               cons_sheet.col_values(1)[1:14])}
         tight_dict = dict()
         for con_str in CONSTRAINTS:
             if priority_dict[con_str] == u'必须满足':
@@ -416,6 +417,7 @@ def input_excel(filename):
         cons_option_dict[Clerk_m_t] = {Clerk_i_d: clerks, 'minimum work time': cons_sheet.cell_value(8, 4)}
         cons_option_dict[Clerk_o_t] = {Clerk_i_d: clerks, 'maximum work time': cons_sheet.cell_value(9, 4)}
         cons_option_dict[Clerk_c_o] = {Clerk_i_d: clerks, 'maximum off days': int(cons_sheet.cell_value(10, 4))}
+        cons_option_dict[Clerk_ma_o_d] = {Clerk_i_d: clerks, 'Max off day': cons_sheet.cell_value(14, 4)}
         week_s_d, try_sd = [], 1
         while try_sd + 6 <= data['working days']:
             week_s_d.append(try_sd)
