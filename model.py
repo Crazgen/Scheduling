@@ -239,7 +239,6 @@ def solve_single_floor(data):
     prob += obj
     # prob.solve(lp.PULP_CBC_CMD(msg=1, maxSeconds=data['Time limit']))
     prob.solve(lp.COIN_CMD(msg=1, maxSeconds=data['Time limit'], path=os.getcwdu() + '\\cbc.exe'))
-    lp.CPLEX_CMD(msg=1, maxSeconds=data['Time limit'], path=os.getcwdu() + '\\cbc.exe')
     print(lp.LpStatus[prob.status])
     if lp.LpStatus[prob.status] == 'Infeasible':
         return None, cons_relax, None, None, None, lp.LpStatus[prob.status], prob.constraints
@@ -412,8 +411,9 @@ def input_excel(filename):
                 data['Clerk names'].append(u'员工' + str(n))
         clerks = range(1, data['clerks'] + 1)
         cons_sheet = w_f.sheet_by_name(u'约束管理')
-        priority_dict = {str(f_str): pri for f_str, pri in zip(flags.col_values(0)[1:14],
-                                                               cons_sheet.col_values(1)[1:14])}
+        priority_dict = {str(f_str): pri for f_str, pri in zip(flags.col_values(0)[1:13],
+                                                               cons_sheet.col_values(1)[1:13])}
+        priority_dict[str(flags.col_values(0)[14])] = cons_sheet.col_values(1)[14]
         tight_dict = dict()
         for con_str in CONSTRAINTS:
             if priority_dict[con_str] == u'必须满足':
