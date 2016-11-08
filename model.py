@@ -118,6 +118,19 @@ def solve_single_floor(data):
             obj += lp.lpSum(cons_relax[Clerk_m_o_d][n] for n in clerk_mod) * (10 ** data[Clerk_m_o_d][2])
             for n in clerk_mod:
                 prob += lp.lpSum(z_c[(n, d)] for d in days) <= day_num - mod + cons_relax[Clerk_m_o_d][n]
+    # constraint for the maximum off days
+    if data[Clerk_ma_o_d][0]:
+        clerk_maod = data[Clerk_ma_o_d][3][Clerk_i_d]
+        maod = data[Clerk_ma_o_d][3]['Max off day']
+        if data[Clerk_ma_o_d][1]:
+            for n in clerk_maod:
+                prob += lp.lpSum(z_c[(n, d)] for d in days) >= day_num - maod
+        else:
+            cons_relax[Clerk_ma_o_d] = lp.LpVariable.dicts('Exceeding off days', clerk_maod, 0)
+            CONSTRAINTS_IND[Clerk_ma_o_d] = u'员工：'
+            obj += lp.lpSum(cons_relax[Clerk_ma_o_d][n] for n in clerk_maod) * (10 ** data[Clerk_ma_o_d][2])
+            for n in clerk_maod:
+                prob += lp.lpSum(z_c[(n, d)] for d in days) >= day_num - maod - cons_relax[Clerk_ma_o_d][n]
     # constraint for 最多连续上全班天数
     if data[Clerk_m_w_d][0]:
         clerk_mwd = data[Clerk_m_w_d][3][Clerk_i_d]
